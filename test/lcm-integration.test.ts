@@ -2402,6 +2402,37 @@ describe("LCM integration: retrieval", () => {
     expect(result.messages[2].content).toBe("Source message 2");
   });
 
+  it("expand returns a truncated source-message excerpt when the first leaf message exceeds tokenCap", async () => {
+    const oversized = "LCM oversize payload " + "x".repeat(40_000);
+    const msgs = await ingestMessages(convStore, sumStore, 1, {
+      contentFn: () => oversized,
+    });
+
+    const leafId = "sum_leaf_with_oversized_msg";
+    await sumStore.insertSummary({
+      summaryId: leafId,
+      conversationId: CONV_ID,
+      kind: "leaf",
+      content: "Leaf summary of one oversized source message.",
+      tokenCount: 10,
+    });
+    await sumStore.linkSummaryToMessages(leafId, [msgs[0]!.messageId]);
+
+    const result = await retrieval.expand({
+      summaryId: leafId,
+      depth: 1,
+      includeMessages: true,
+      tokenCap: 500,
+    });
+
+    expect(result.truncated).toBe(true);
+    expect(result.messages).toHaveLength(1);
+    expect(result.estimatedTokens).toBeGreaterThan(0);
+    expect(result.estimatedTokens).toBeLessThanOrEqual(500);
+    expect(result.messages[0]!.content).toContain("LCM oversize payload");
+    expect(result.messages[0]!.content).toContain("[LCM expansion truncated from");
+  });
+
   it("expand recurses through multiple depth levels", async () => {
     // Build a 3-level lineage chain: grandparent -> mid_parent -> deep_leaf
     await sumStore.insertSummary({

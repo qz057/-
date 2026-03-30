@@ -244,6 +244,10 @@ export function distillForSubagent(result: ExpansionResult): string {
         (m) => `msg#${m.messageId} (${m.role}, ${m.tokenCount} tokens)`,
       );
       lines.push(`Messages: ${msgParts.join(", ")}`);
+      const firstMessageWithSnippet = entry.messages.find((m) => m.snippet);
+      if (firstMessageWithSnippet?.snippet) {
+        lines.push(`[Message snippet: ${truncateSnippet(firstMessageWithSnippet.snippet)}]`);
+      }
     }
 
     // Show a snippet for children that have content

@@ -111,6 +111,76 @@ export interface ExpandResult {
 
 import { estimateTokens } from "./estimate-tokens.js";
 
+const EXPANSION_TRUNCATION_SUFFIX_PREFIX = "\n[LCM expansion truncated from ";
+const EXPANSION_TRUNCATION_SUFFIX_SUFFIX = " tokens]";
+
+function buildExpansionTruncationSuffix(originalTokenCount: number): string {
+  return (
+    `${EXPANSION_TRUNCATION_SUFFIX_PREFIX}${Math.max(1, Math.floor(originalTokenCount))}` +
+    EXPANSION_TRUNCATION_SUFFIX_SUFFIX
+  );
+}
+
+/**
+ * Fit as much of a message as possible within the remaining token budget,
+ * preserving a visible truncation marker instead of dropping the message
+ * entirely when the first raw message is larger than the cap.
+ */
+function truncateMessageToTokenBudget(
+  content: string,
+  tokenBudget: number,
+  originalTokenCount: number,
+): { content: string; tokenCount: number } | null {
+  const budget = Math.max(0, Math.floor(tokenBudget));
+  if (budget <= 0) {
+    return null;
+  }
+
+  const fullTokenCount = Math.max(1, estimateTokens(content));
+  if (fullTokenCount <= budget) {
+    return {
+      content,
+      tokenCount: fullTokenCount,
+    };
+  }
+
+  const suffix = buildExpansionTruncationSuffix(originalTokenCount);
+  const ellipsis = "...";
+  const suffixBudget = estimateTokens(`${ellipsis}${suffix}`);
+  if (suffixBudget >= budget) {
+    return null;
+  }
+
+  let low = 1;
+  let high = content.length;
+  let bestContent = "";
+  let bestTokenCount = 0;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidateBody = content.slice(0, mid).trimEnd();
+    const candidate = `${candidateBody}${ellipsis}${suffix}`;
+    const candidateTokens = estimateTokens(candidate);
+
+    if (candidateTokens <= budget) {
+      bestContent = candidate;
+      bestTokenCount = candidateTokens;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  if (!bestContent || bestTokenCount <= 0) {
+    return null;
+  }
+
+  return {
+    content: bestContent,
+    tokenCount: bestTokenCount,
+  };
+}
+
 // ── RetrievalEngine ──────────────────────────────────────────────────────────
 
 export class RetrievalEngine {
@@ -341,6 +411,21 @@ export class RetrievalEngine {
         const tokenCount = msg.tokenCount || estimateTokens(msg.content);
 
         if (result.estimatedTokens + tokenCount > tokenCap) {
+          const remainingBudget = tokenCap - result.estimatedTokens;
+          const truncatedMessage = truncateMessageToTokenBudget(
+            msg.content,
+            remainingBudget,
+            tokenCount,
+          );
+          if (truncatedMessage) {
+            result.messages.push({
+              messageId: msg.messageId,
+              role: msg.role,
+              content: truncatedMessage.content,
+              tokenCount: truncatedMessage.tokenCount,
+            });
+            result.estimatedTokens += truncatedMessage.tokenCount;
+          }
           result.truncated = true;
           break;
         }

@@ -992,6 +992,7 @@ describe("distillForSubagent", () => {
     expect(output).toContain("### sum_b (leaf");
     expect(output).toContain("msg#5 (user, 10 tokens)");
     expect(output).toContain("msg#6 (assistant, 15 tokens)");
+    expect(output).toContain("[Message snippet: user said hello]");
 
     // Cited IDs
     expect(output).toContain("Cited IDs for follow-up:");
