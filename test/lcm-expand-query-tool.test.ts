@@ -228,6 +228,8 @@ describe("createLcmExpandQueryTool", () => {
     expect(message).toContain("lcm_describe");
     expect(message).toContain("DO NOT call `lcm_expand_query` from this delegated session.");
     expect(message).toContain("Synthesize the final answer from retrieved evidence, not assumptions.");
+    expect(message).toContain("not directly retrievable from retrieved evidence");
+    expect(message).toContain("Prefer a partial but evidence-backed JSON answer over continued search that risks timeout.");
     expect(message).toContain("Expansion token budget");
 
     expect(delegatedSessionKey).not.toBe("");
